@@ -83,11 +83,11 @@ class Widar_Dataset(Dataset):
         return x,y
 
 def UT_HAR_dataset(root_dir):
-    data_list = glob.glob(root_dir+"\\UT_HAR\\data\\*.csv")
-    label_list = glob.glob(root_dir+"\\UT_HAR\\label\\*.csv")
+    data_list = glob.glob(root_dir+"/UT_HAR/data/*.csv")
+    label_list = glob.glob(root_dir+"/UT_HAR/label/*.csv")
     WiFi_data = {}
     for data_dir in data_list:
-        data_name = data_dir.split("\\")[-1].split('.')[0]
+        data_name = data_dir.split("/")[-1].split('.')[0]
         with open(data_dir, 'rb') as f:
             data = np.load(f)
             #print(data.shape)
@@ -99,7 +99,7 @@ def UT_HAR_dataset(root_dir):
         #break
         WiFi_data[data_name] = torch.Tensor(data_norm)
     for label_dir in label_list:
-        label_name = label_dir.split("\\")[-1].split('.')[0]
+        label_name = label_dir.split("/")[-1].split('.')[0]
         with open(label_dir, 'rb') as f:
             label = np.load(f)
             #print(label[0])
@@ -183,7 +183,7 @@ def Baha_et_al(root_dir):
     data_deg = []
     label = []
     subject_list = os.listdir(root_dir)
-    file_path = root_dir + "\\"
+    file_path = root_dir + "/"
     count = 0
     for subject in subject_list:
         # if subject != 'Subject 1':
@@ -191,7 +191,7 @@ def Baha_et_al(root_dir):
         # print(subject)
         # if count > 2:
         #    continue
-        file_path_1 = file_path + "\\" + subject
+        file_path_1 = file_path + "/" + subject
 
         data_list = os.listdir(file_path_1)
         
@@ -201,9 +201,9 @@ def Baha_et_al(root_dir):
             #    continue
             #if f != 'E1_S03_C01_A01_T02.csv':
             #    continue
-            file = file_path_1 +"\\" + f
+            file = file_path_1 +"/" + f
             print(file)
-            data_name = file.split('\\')[-1].split('_')[-2]
+            data_name = file.split('/')[-1].split('_')[-2]
             csi_data = pd.read_csv(file)
             #print(csi_data.shape)
             #exit()

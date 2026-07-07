@@ -1,5 +1,16 @@
-import keras
+# [SỬA ĐỔI]: Đã xóa 'import keras' độc lập, gọi trực tiếp từ tensorflow
 import tensorflow as tf
+from tensorflow import keras 
+
+# [SỬA ĐỔI]: Cấu hình Memory Growth cho GPU. Bắt buộc trên Kaggle để không bị lỗi tràn bộ nhớ VRAM.
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(f"Lỗi khởi tạo GPU: {e}")
+
 import numpy as np 
 from tqdm import tqdm
 from tensorflow.keras import layers,optimizers
@@ -117,7 +128,8 @@ def train_test(x_train_amp,x_train_phase,label):
         acc = acc_val/(num_batches_val)
         if best < acc:
             best = acc
-            #model.save(str(epoch)+'_our_data_model.h5')
+            # [SỬA ĐỔI]: Cập nhật định dạng file lưu chuẩn của TensorFlow mới nhất từ .h5 sang .keras
+            # model.save(str(epoch)+'_our_data_model.keras')
         
         val_accuracies.append(acc)
         print('avg_acc ', acc)
@@ -144,7 +156,4 @@ if __name__ == '__main__':
     x_train_amp, x_train_phase,label = read_data(root_data)
     train_test(x_train_amp,x_train_phase,label)
 
-#draw_acc(EPOCHS,train_accuracies, val_accuracies) 
-
-
-
+#draw_acc(EPOCHS,train_accuracies, val_accuracies)

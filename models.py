@@ -11,8 +11,17 @@ from transformer_encoder import Transfomer
 
 
 class Two_Stream_Model(layers.Layer):
-    def __init__(self,hlayers,vlayers,hheads,vheads,K,sample,num_class, maxlen):
-        super(Two_Stream_Model,self).__init__()
+    # [SỬA ĐỔI]: Thêm **kwargs vào hàm khởi tạo để đảm bảo tương thích với chuẩn Layer của Keras
+    def __init__(self,hlayers,vlayers,hheads,vheads,K,sample,num_class, maxlen, **kwargs):
+        super(Two_Stream_Model,self).__init__(**kwargs)
+        
+        # [SỬA ĐỔI]: Lưu trữ lại các cấu hình đầu vào để phục vụ cho hàm get_config() ở cuối class
+        self._config_dict = {
+            'hlayers': hlayers, 'vlayers': vlayers, 'hheads': hheads, 
+            'vheads': vheads, 'K': K, 'sample': sample, 
+            'num_class': num_class, 'maxlen': maxlen
+        }
+
         self.transfomer = MCAT(270,hlayers,hheads,500)
         self.kernel_num = 128
         self.kernel_num_v = 16
@@ -97,8 +106,8 @@ class Two_Stream_Model(layers.Layer):
             re = self._aggregate(x)
         return re
 
-
-
-
-
-
+    # [SỬA ĐỔI]: Thêm hàm get_config để lớp tuỳ chỉnh có thể được tuần tự hoá (serialize)
+    def get_config(self):
+        config = super(Two_Stream_Model, self).get_config()
+        config.update(self._config_dict)
+        return config

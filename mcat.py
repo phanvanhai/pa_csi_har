@@ -5,10 +5,9 @@ import numpy as np
 
 import math, copy, time
 
-
 class Encoder(layers.Layer):
-    def __init__(self,layer, N):
-        super(Encoder,self).__init__()
+    def __init__(self,layer, N, **kwargs):
+        super(Encoder,self).__init__(**kwargs)
         self.layers = [] 
         for i in range(N):
             self.layers.append(layer)
@@ -20,11 +19,16 @@ class Encoder(layers.Layer):
         return self.norm(x)
 
 class LayerNorm(layers.Layer):
-    def __init__(self,features,eps=1e-6):
-        super(LayerNorm,self).__init__()
-        self.a_2 = np.ones(features)
-        self.b_2 = np.ones(features)
+    def __init__(self,features,eps=1e-6, **kwargs):
+        super(LayerNorm,self).__init__(**kwargs)
+        self.features = features
         self.eps = eps
+        
+    def build(self, input_shape):
+        # [SỬA ĐỔI]: Khai báo weight chuẩn của Keras thay vì np.ones tĩnh
+        self.a_2 = self.add_weight(shape=(self.features,), initializer='ones', trainable=True)
+        self.b_2 = self.add_weight(shape=(self.features,), initializer='zeros', trainable=True)
+        super(LayerNorm, self).build(input_shape)
     
     def call(self,x):
         mean = tf.reduce_mean(x, axis=-1, keepdims=True)
@@ -33,10 +37,9 @@ class LayerNorm(layers.Layer):
         return out
 
 class SublayerConnection(layers.Layer):
-    def __init__(self,size, dropout):
-        super(SublayerConnection, self).__init__()
-        #self.norm =layers.LayerNormalization() # LayerNorm(size)
-        self.norm =LayerNorm(size)
+    def __init__(self,size, dropout, **kwargs):
+        super(SublayerConnection, self).__init__(**kwargs)
+        self.norm = LayerNorm(size)
         self.dropout = layers.Dropout(dropout)
 
     def call(self,x,sublayer):
@@ -44,37 +47,30 @@ class SublayerConnection(layers.Layer):
         return x + self.dropout(sub) 
 
 class EncoderLayer(layers.Layer):
-    def __init__(self,size,self_attt,feed_forward,dropout):
-        super(EncoderLayer,self).__init__()
+    def __init__(self,size,self_attt,feed_forward,dropout, **kwargs):
+        super(EncoderLayer,self).__init__(**kwargs)
         self.self_attt = self_attt
         self.feed_forward = feed_forward
         self.sublayer_0 = SublayerConnection(size,dropout)
         self.sublayer_1 = SublayerConnection(size,dropout)
         self.size = size
+        
     def call(self,x):
         lamb = lambda x: self.self_attt(x,x,x)
         x = self.sublayer_0(x,lamb)
         return self.sublayer_1(x,self.feed_forward)
 
-def attention_with_pos(query, key, value, pos_k, pos_v, mask=None, dropout=None):
-    "Compute 'Scaled Dot Product Attention'"
-    d_k = query.size(-1)
-    scores = torch.matmul(query, key.transpose(-2, -1)) \
-             / math.sqrt(d_k)
-    if mask is not None:
-        scores = scores.masked_fill(mask == 0, -1e9)
-    p_attn = F.softmax(scores, dim=-1)
-    if dropout is not None:
-        p_attn = dropout(p_attn)
-    return torch.matmul(p_attn, value), p_attn
+# [SỬA ĐỔI]: Đã comment hàm attention_with_pos sử dụng 'torch' do đây là mã rác không được sử dụng
+# def attention_with_pos(query, key, value, pos_k, pos_v, mask=None, dropout=None):
+#    ...
 
 class HAR_CNN(layers.Layer):
-    def __init__(self,d_model,d_ff,filters,dropout=0.2):
-        super(HAR_CNN,self).__init__()
+    def __init__(self,d_model,d_ff,filters,dropout=0.2, **kwargs):
+        super(HAR_CNN,self).__init__(**kwargs)
         self.kernel_num = int(d_ff)
         self.filter_sizes = filters
         self.dropout = layers.Dropout(dropout)
-        self.bn = layers.BatchNormalization(axis=1)#layers.LayerNormalization(axis=1)
+        self.bn = layers.BatchNormalization(axis=1)
         self.relu = layers.Activation('relu')
         self.encoders = []
         for i, filter_size in enumerate(self.filter_sizes):
@@ -89,7 +85,6 @@ class HAR_CNN(layers.Layer):
         data = tf.cast(data, dtype=tf.float32)
         enc_outs = []
         for encoder in self.encoders:
-            temp = tf.transpose(data, perm=[0, 2, 1])
             f_map = encoder(tf.transpose(data, perm=[0, 2, 1]))
             enc_ = f_map
             enc_ = self.relu(self.dropout(self.bn(enc_)))
@@ -100,7 +95,6 @@ class HAR_CNN(layers.Layer):
 
 
 def attention(query, key, value, mask=None, dropout=None):
-    "Compute 'Scaled Dot Product Attention'"
     d_k = tf.cast(tf.shape(query)[-1], tf.float32)
     scores = tf.matmul(query, key, transpose_b=True) / tf.math.sqrt(d_k)
 
@@ -115,16 +109,13 @@ def attention(query, key, value, mask=None, dropout=None):
     return tf.matmul(p_attn, value), p_attn
 
 class MultiHeadAttention(layers.Layer):
-    def __init__(self,h,d_model,dropout=0.1):
-        super(MultiHeadAttention,self).__init__()
+    def __init__(self,h,d_model,dropout=0.1, **kwargs):
+        super(MultiHeadAttention,self).__init__(**kwargs)
         self.d_k = d_model // h
         self.h = h
         self.linears = [layers.Dense(d_model) for _ in range(4)]
         self.att = None
         self.dropout = layers.Dropout(dropout)
-
-    def get_rel_pos(self, x):
-        return max(self.k*-1, min(self.k, x))
 
     def call(self, query, key, value, mask=None):
         if mask is not None:
@@ -140,8 +131,13 @@ class MultiHeadAttention(layers.Layer):
         return self.linears[-1](x)
 
 class MCAT(layers.Layer):
-    def __init__(self, hidden_dim, N, H, total_size, filters=[1, 3, 5]):
-        super(MCAT, self).__init__()
+    def __init__(self, hidden_dim, N, H, total_size, filters=[1, 3, 5], **kwargs):
+        super(MCAT, self).__init__(**kwargs)
+        self.hidden_dim = hidden_dim
+        self.N = N
+        self.H = H
+        self.total_size = total_size
+        self.filters = filters
 
         self.model = Encoder(
             EncoderLayer(hidden_dim, MultiHeadAttention(H, hidden_dim),
@@ -152,3 +148,12 @@ class MCAT(layers.Layer):
 
     def call(self, x):
         return self.model(x)
+
+    # [SỬA ĐỔI]: Thêm hàm get_config để lớp MCAT có thể được tuần tự hoá
+    def get_config(self):
+        config = super(MCAT, self).get_config()
+        config.update({
+            "hidden_dim": self.hidden_dim, "N": self.N, 
+            "H": self.H, "total_size": self.total_size, "filters": self.filters
+        })
+        return config
