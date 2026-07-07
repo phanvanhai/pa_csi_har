@@ -1,8 +1,5 @@
-# Cú pháp chuẩn cho Pip (đã xóa Keras/TensorFlow để bảo toàn GPU Kaggle)
-numpy==1.24.1
 scikit-image==0.24.0
 scikit-learn==1.4.2
-torch==2.5.1+cu124
-torchaudio==2.5.1+cu124
-torchvision==0.20.1+cu124
 tqdm==4.66.5
+matplotlib
+seaborn
