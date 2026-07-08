@@ -10,7 +10,6 @@ class LayerNorm(layers.Layer):
         self.eps = eps
     
     def build(self, input_shape):
-        # [SỬA ĐỔI]: np.ones tĩnh sẽ không thể huấn luyện. Phải dùng add_weight để mô hình học được tham số.
         self.a_2 = self.add_weight(shape=(self.features,), initializer='ones', trainable=True)
         self.b_2 = self.add_weight(shape=(self.features,), initializer='zeros', trainable=True)
         super(LayerNorm, self).build(input_shape)
@@ -29,7 +28,6 @@ class LayerNorm(layers.Layer):
 class Encoder(layers.Layer):
     def __init__(self, layer, N, **kwargs):
         super(Encoder, self).__init__(**kwargs)
-        # [SỬA ĐỔI]: Tránh đặt tên self.layers trùng với thuộc tính nội bộ của Keras
         self.layers_list = [layer for _ in range(N)]
         self.N = N
         self.norm = LayerNorm(500)
@@ -44,22 +42,7 @@ class Encoder(layers.Layer):
         config.update({"N": self.N})
         return config
 
-class SublayerConnection(layers.Layer):
-    def __init__(self, size, dropout, **kwargs):
-        super(SublayerConnection, self).__init__(**kwargs)
-        self.size = size
-        self.dropout_rate = dropout
-        self.norm = LayerNorm(size)
-        self.dropout = layers.Dropout(dropout)
-
-    # [SỬA ĐỔI]: Đổi tên hàm từ forward (chuẩn PyTorch) sang call (chuẩn Keras)
-    def call(self, x, sublayer):
-        return x + self.dropout(sublayer(self.norm(x)))
-
-    def get_config(self):
-        config = super(SublayerConnection, self).get_config()
-        config.update({"size": self.size, "dropout": self.dropout_rate})
-        return config
+# [SỬA ĐỔI]: Xóa bỏ SublayerConnection và cấu trúc trực tiếp mạng residual vào EncoderLayer
 
 class EncoderLayer(layers.Layer):
     def __init__(self, size, self_attn, feed_forward, dropout, **kwargs):
@@ -68,13 +51,23 @@ class EncoderLayer(layers.Layer):
         self.feed_forward = feed_forward
         self.size = size
         self.dropout_rate = dropout
-        self.sublayer1 = SublayerConnection(size, dropout)
-        self.sublayer2 = SublayerConnection(size, dropout)
+        
+        self.norm1 = LayerNorm(size)
+        self.drop1 = layers.Dropout(dropout)
+        self.norm2 = LayerNorm(size)
+        self.drop2 = layers.Dropout(dropout)
 
-    # [SỬA ĐỔI]: Sửa lỗi 'forward' thành 'call'. Sửa luôn lỗi tác giả gọi nhầm self.sublayer[0] vốn không tồn tại.
     def call(self, x, mask=None):
-        x = self.sublayer1(x, lambda x: self.self_attn(x, x, x, mask))
-        return self.sublayer2(x, self.feed_forward)
+        # 1. Attention
+        nx = self.norm1(x)
+        attn_out = self.self_attn(nx, nx, nx, mask=mask)
+        x = x + self.drop1(attn_out)
+
+        # 2. Feed Forward
+        nx2 = self.norm2(x)
+        ff_out = self.feed_forward(nx2)
+        x = x + self.drop2(ff_out)
+        return x
 
     def get_config(self):
         config = super(EncoderLayer, self).get_config()
@@ -88,7 +81,6 @@ def attention(query, key, value, mask=None, dropout=None):
         scores = tf.where(tf.equal(mask, 0), tf.fill(tf.shape(scores), -1e9), scores)
     p_attn = tf.nn.softmax(scores, axis=-1)
     if dropout is not None:
-        # [SỬA ĐỔI]: Sử dụng layer dropout được truyền vào thay vì khởi tạo ngay trong hàm
         p_attn = dropout(p_attn)
     return tf.matmul(p_attn, value), p_attn
 
@@ -124,7 +116,6 @@ class MultiHeadedAttention(layers.Layer):
         self.attn = None
         self.dropout = layers.Dropout(dropout)
 
-    # [SỬA ĐỔI]: Đổi 'forward' thành 'call'
     def call(self, query, key, value, mask=None):
         if mask is not None:
             mask = tf.expand_dims(mask, axis=1)
@@ -135,7 +126,6 @@ class MultiHeadedAttention(layers.Layer):
             for l, x in zip(self.linears, (query, key, value))
         ]
 
-        # [SỬA ĐỔI]: Sửa lỗi self.attention (vì attention là hàm cục bộ bên ngoài lớp)
         x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout)
 
         x = tf.reshape(tf.transpose(x, perm=[0, 2, 1, 3]), (nbatches, -1, self.h * self.d_k))
@@ -160,7 +150,6 @@ class Transfomer(layers.Layer):
             N
         )
         
-    # [SỬA ĐỔI]: Đổi 'forward' thành 'call' và bổ sung return
     def call(self, x, mask=None):
         return self.model(x, mask)
 

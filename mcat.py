@@ -6,69 +6,87 @@ import numpy as np
 import math, copy, time
 
 class Encoder(layers.Layer):
-    def __init__(self,layer, N, **kwargs):
-        super(Encoder,self).__init__(**kwargs)
-        self.layers = [] 
+    def __init__(self, layer, N, **kwargs):
+        super(Encoder, self).__init__(**kwargs)
+        self.layers_list = [] 
+        self.N = N
         for i in range(N):
-            self.layers.append(layer)
+            self.layers_list.append(layer)
         self.norm = LayerNorm(layer.size)
     
-    def call(self,x,mask=None):
-        for layer in self.layers:
+    def call(self, x, mask=None):
+        for layer in self.layers_list:
             x = layer(x)
         return self.norm(x)
 
+    def get_config(self):
+        config = super(Encoder, self).get_config()
+        config.update({"N": self.N})
+        return config
+
 class LayerNorm(layers.Layer):
-    def __init__(self,features,eps=1e-6, **kwargs):
-        super(LayerNorm,self).__init__(**kwargs)
+    def __init__(self, features, eps=1e-6, **kwargs):
+        super(LayerNorm, self).__init__(**kwargs)
         self.features = features
         self.eps = eps
         
     def build(self, input_shape):
-        # [SỬA ĐỔI]: Khai báo weight chuẩn của Keras thay vì np.ones tĩnh
         self.a_2 = self.add_weight(shape=(self.features,), initializer='ones', trainable=True)
         self.b_2 = self.add_weight(shape=(self.features,), initializer='zeros', trainable=True)
         super(LayerNorm, self).build(input_shape)
     
-    def call(self,x):
+    def call(self, x):
         mean = tf.reduce_mean(x, axis=-1, keepdims=True)
         std = tf.math.reduce_std(x, axis=-1, keepdims=True)
-        out = self.a_2 * (x-mean)/(std + self.eps) + self.b_2
+        out = self.a_2 * (x - mean) / (std + self.eps) + self.b_2
         return out
 
-class SublayerConnection(layers.Layer):
-    def __init__(self,size, dropout, **kwargs):
-        super(SublayerConnection, self).__init__(**kwargs)
-        self.norm = LayerNorm(size)
-        self.dropout = layers.Dropout(dropout)
+    def get_config(self):
+        config = super(LayerNorm, self).get_config()
+        config.update({"features": self.features, "eps": self.eps})
+        return config
 
-    def call(self,x,sublayer):
-        sub = sublayer(self.norm(x))
-        return x + self.dropout(sub) 
+# [SỬA ĐỔI]: Đã xóa class SublayerConnection và tích hợp trực tiếp Norm/Dropout vào EncoderLayer 
+# để vượt qua cơ chế kiểm tra Graph Tracing nghiêm ngặt của Keras 3.
 
 class EncoderLayer(layers.Layer):
-    def __init__(self,size,self_attt,feed_forward,dropout, **kwargs):
-        super(EncoderLayer,self).__init__(**kwargs)
+    def __init__(self, size, self_attt, feed_forward, dropout, **kwargs):
+        super(EncoderLayer, self).__init__(**kwargs)
         self.self_attt = self_attt
         self.feed_forward = feed_forward
-        self.sublayer_0 = SublayerConnection(size,dropout)
-        self.sublayer_1 = SublayerConnection(size,dropout)
         self.size = size
+        self.dropout_rate = dropout
         
-    def call(self,x):
-        lamb = lambda x: self.self_attt(x,x,x)
-        x = self.sublayer_0(x,lamb)
-        return self.sublayer_1(x,self.feed_forward)
+        # Khởi tạo trực tiếp các lớp xử lý phụ
+        self.norm1 = LayerNorm(size)
+        self.drop1 = layers.Dropout(dropout)
+        self.norm2 = LayerNorm(size)
+        self.drop2 = layers.Dropout(dropout)
+        
+    def call(self, x, mask=None):
+        # 1. Sublayer: Self-Attention
+        nx = self.norm1(x)
+        attn_out = self.self_attt(nx, nx, nx, mask=mask)
+        x = x + self.drop1(attn_out)
 
-# [SỬA ĐỔI]: Đã comment hàm attention_with_pos sử dụng 'torch' do đây là mã rác không được sử dụng
-# def attention_with_pos(query, key, value, pos_k, pos_v, mask=None, dropout=None):
-#    ...
+        # 2. Sublayer: Feed Forward
+        nx2 = self.norm2(x)
+        ff_out = self.feed_forward(nx2)
+        x = x + self.drop2(ff_out)
+        
+        return x
+
+    def get_config(self):
+        config = super(EncoderLayer, self).get_config()
+        config.update({"size": self.size, "dropout": self.dropout_rate})
+        return config
 
 class HAR_CNN(layers.Layer):
-    def __init__(self,d_model,d_ff,filters,dropout=0.2, **kwargs):
-        super(HAR_CNN,self).__init__(**kwargs)
+    def __init__(self, d_model, d_ff, filters, dropout=0.2, **kwargs):
+        super(HAR_CNN, self).__init__(**kwargs)
         self.kernel_num = int(d_ff)
         self.filter_sizes = filters
+        self.dropout_rate = dropout
         self.dropout = layers.Dropout(dropout)
         self.bn = layers.BatchNormalization(axis=1)
         self.relu = layers.Activation('relu')
@@ -77,7 +95,7 @@ class HAR_CNN(layers.Layer):
             encoder = layers.Conv1D(filters=self.kernel_num, 
                                     kernel_size=filter_size,
                                     data_format='channels_first',
-                                    padding = 'same'
+                                    padding='same'
                                    )
             self.encoders.append(encoder)
 
@@ -90,9 +108,18 @@ class HAR_CNN(layers.Layer):
             enc_ = self.relu(self.dropout(self.bn(enc_)))
             enc_outs.append(tf.expand_dims(enc_, axis=1))
 
-        re = tf.divide(tf.reduce_sum(tf.concat(enc_outs, axis=1), axis=1),3)
+        re = tf.divide(tf.reduce_sum(tf.concat(enc_outs, axis=1), axis=1), 3)
         return tf.transpose(re, perm=[0, 2, 1])
 
+    def get_config(self):
+        config = super(HAR_CNN, self).get_config()
+        config.update({
+            "d_model": self.kernel_num,
+            "d_ff": self.kernel_num,
+            "filters": self.filter_sizes,
+            "dropout": self.dropout_rate
+        })
+        return config
 
 def attention(query, key, value, mask=None, dropout=None):
     d_k = tf.cast(tf.shape(query)[-1], tf.float32)
@@ -109,10 +136,12 @@ def attention(query, key, value, mask=None, dropout=None):
     return tf.matmul(p_attn, value), p_attn
 
 class MultiHeadAttention(layers.Layer):
-    def __init__(self,h,d_model,dropout=0.1, **kwargs):
-        super(MultiHeadAttention,self).__init__(**kwargs)
+    def __init__(self, h, d_model, dropout=0.1, **kwargs):
+        super(MultiHeadAttention, self).__init__(**kwargs)
         self.d_k = d_model // h
         self.h = h
+        self.d_model = d_model
+        self.dropout_rate = dropout
         self.linears = [layers.Dense(d_model) for _ in range(4)]
         self.att = None
         self.dropout = layers.Dropout(dropout)
@@ -122,13 +151,23 @@ class MultiHeadAttention(layers.Layer):
             mask = tf.expand_dims(mask, 1)
         nbatches = tf.shape(query)[0]
 
-        query, key, value = \
-            [tf.transpose(tf.reshape(l(x), (nbatches, -1, self.h, self.d_k)), perm=[0, 2, 1, 3])
-             for l, x in zip(self.linears, (query, key, value))]
+        query, key, value = [
+            tf.transpose(tf.reshape(l(x), (nbatches, -1, self.h, self.d_k)), perm=[0, 2, 1, 3])
+            for l, x in zip(self.linears, (query, key, value))
+        ]
         x, self.attn = attention(query, key, value, mask=mask)
 
         x = tf.reshape(tf.transpose(x, perm=[0, 2, 1, 3]), (nbatches, -1, self.h * self.d_k))
         return self.linears[-1](x)
+
+    def get_config(self):
+        config = super(MultiHeadAttention, self).get_config()
+        config.update({
+            "h": self.h,
+            "d_model": self.d_model,
+            "dropout": self.dropout_rate
+        })
+        return config
 
 class MCAT(layers.Layer):
     def __init__(self, hidden_dim, N, H, total_size, filters=[1, 3, 5], **kwargs):
@@ -149,7 +188,6 @@ class MCAT(layers.Layer):
     def call(self, x):
         return self.model(x)
 
-    # [SỬA ĐỔI]: Thêm hàm get_config để lớp MCAT có thể được tuần tự hoá
     def get_config(self):
         config = super(MCAT, self).get_config()
         config.update({
