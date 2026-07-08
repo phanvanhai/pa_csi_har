@@ -4,14 +4,18 @@ from tensorflow.keras.initializers import GlorotUniform
 import numpy as np
 
 class LayerNorm(layers.Layer):
-    def __init__(self, features, eps=1e-6, **kwargs):
+    def __init__(self, features=None, eps=1e-6, **kwargs):
         super(LayerNorm, self).__init__(**kwargs)
         self.features = features
         self.eps = eps
     
     def build(self, input_shape):
-        self.a_2 = self.add_weight(shape=(self.features,), initializer='ones', trainable=True)
-        self.b_2 = self.add_weight(shape=(self.features,), initializer='zeros', trainable=True)
+        # [SỬA ĐỔI]: Nếu không truyền features, tự động lấy chiều cuối cùng của input_shape
+        if self.features is None:
+            self.features = input_shape[-1]
+            
+        self.a_2 = self.add_weight(shape=(self.features,), initializer='ones', trainable=True, name="gamma")
+        self.b_2 = self.add_weight(shape=(self.features,), initializer='zeros', trainable=True, name="beta")
         super(LayerNorm, self).build(input_shape)
 
     def call(self, x):
@@ -30,11 +34,11 @@ class Encoder(layers.Layer):
         super(Encoder, self).__init__(**kwargs)
         self.layers_list = [layer for _ in range(N)]
         self.N = N
-        self.norm = LayerNorm(500)
+        # [SỬA ĐỔI]: Để Trống để LayerNorm tự động bắt kích thước theo luồng dữ liệu (500 hoặc 1000)
+        self.norm = LayerNorm()
         
     def call(self, x, mask=None):
         for layer in self.layers_list:
-            # [SỬA ĐỔI]: Ép truyền tham số dưới dạng từ khóa (keyword)
             x = layer(x, mask=mask)
         return self.norm(x)
 
@@ -51,6 +55,7 @@ class EncoderLayer(layers.Layer):
         self.size = size
         self.dropout_rate = dropout
         
+        # [SỬA ĐỔI]: Sử dụng size động
         self.norm1 = LayerNorm(size)
         self.drop1 = layers.Dropout(dropout)
         self.norm2 = LayerNorm(size)
@@ -59,7 +64,6 @@ class EncoderLayer(layers.Layer):
     def call(self, x, mask=None):
         # 1. Attention
         nx = self.norm1(x)
-        # [SỬA ĐỔI]: Khai báo rõ mask=mask
         attn_out = self.self_attn(nx, nx, nx, mask=mask)
         x = x + self.drop1(attn_out)
 
@@ -126,7 +130,6 @@ class MultiHeadedAttention(layers.Layer):
             for l, x in zip(self.linears, (query, key, value))
         ]
 
-        # [SỬA ĐỔI]: Khai báo rõ mask=mask
         x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout)
 
         x = tf.reshape(tf.transpose(x, perm=[0, 2, 1, 3]), (nbatches, -1, self.h * self.d_k))
@@ -152,7 +155,6 @@ class Transfomer(layers.Layer):
         )
         
     def call(self, x, mask=None):
-        # [SỬA ĐỔI]: Khai báo rõ mask=mask
         return self.model(x, mask=mask)
 
     def get_config(self):
