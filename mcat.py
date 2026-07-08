@@ -12,7 +12,8 @@ class Encoder(layers.Layer):
         self.N = N
         for i in range(N):
             self.layers_list.append(layer)
-        self.norm = LayerNorm(layer.size)
+        # [SỬA ĐỔI]: Để trống LayerNorm để tự động nhận kích thước đầu ra thay vì truyền layer.size cố định
+        self.norm = LayerNorm()
     
     def call(self, x, mask=None):
         for layer in self.layers_list:
@@ -25,14 +26,17 @@ class Encoder(layers.Layer):
         return config
 
 class LayerNorm(layers.Layer):
-    def __init__(self, features, eps=1e-6, **kwargs):
+    def __init__(self, features=None, eps=1e-6, **kwargs):
         super(LayerNorm, self).__init__(**kwargs)
         self.features = features
         self.eps = eps
         
     def build(self, input_shape):
-        self.a_2 = self.add_weight(shape=(self.features,), initializer='ones', trainable=True)
-        self.b_2 = self.add_weight(shape=(self.features,), initializer='zeros', trainable=True)
+        # [SỬA ĐỔI]: Tự động lấy chiều cuối cùng của input_shape nếu features=None
+        if self.features is None:
+            self.features = input_shape[-1]
+        self.a_2 = self.add_weight(shape=(self.features,), initializer='ones', trainable=True, name="gamma")
+        self.b_2 = self.add_weight(shape=(self.features,), initializer='zeros', trainable=True, name="beta")
         super(LayerNorm, self).build(input_shape)
     
     def call(self, x):
@@ -46,9 +50,6 @@ class LayerNorm(layers.Layer):
         config.update({"features": self.features, "eps": self.eps})
         return config
 
-# [SỬA ĐỔI]: Đã xóa class SublayerConnection và tích hợp trực tiếp Norm/Dropout vào EncoderLayer 
-# để vượt qua cơ chế kiểm tra Graph Tracing nghiêm ngặt của Keras 3.
-
 class EncoderLayer(layers.Layer):
     def __init__(self, size, self_attt, feed_forward, dropout, **kwargs):
         super(EncoderLayer, self).__init__(**kwargs)
@@ -57,7 +58,6 @@ class EncoderLayer(layers.Layer):
         self.size = size
         self.dropout_rate = dropout
         
-        # Khởi tạo trực tiếp các lớp xử lý phụ
         self.norm1 = LayerNorm(size)
         self.drop1 = layers.Dropout(dropout)
         self.norm2 = LayerNorm(size)
