@@ -49,7 +49,7 @@ def build_model(input_shape, hlayers,vlayers,hheads,vheads,K,sample,num_class):
     inputs_1 = layers.Input(shape=input_shape)
     x = Two_Stream_Model(hlayers,vlayers,hheads,vheads,K,sample,num_class,maxlen)(inputs)
     x_1 = Two_Stream_Model(hlayers,vlayers,hheads,vheads,K,sample,num_class,maxlen)(inputs_1)
-    gate = GatesResidualNetwork(256)(x, x_1)
+    gate = GatesResidualNetwork(256)(x, context=x_1)
     outputs = layers.Dense(num_class,activation='softmax')(gate)
     model = keras.Model(inputs=[inputs,inputs_1], outputs=outputs)
     return model

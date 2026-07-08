@@ -34,15 +34,14 @@ class Encoder(layers.Layer):
         
     def call(self, x, mask=None):
         for layer in self.layers_list:
-            x = layer(x, mask)
+            # [SỬA ĐỔI]: Ép truyền tham số dưới dạng từ khóa (keyword)
+            x = layer(x, mask=mask)
         return self.norm(x)
 
     def get_config(self):
         config = super(Encoder, self).get_config()
         config.update({"N": self.N})
         return config
-
-# [SỬA ĐỔI]: Xóa bỏ SublayerConnection và cấu trúc trực tiếp mạng residual vào EncoderLayer
 
 class EncoderLayer(layers.Layer):
     def __init__(self, size, self_attn, feed_forward, dropout, **kwargs):
@@ -60,6 +59,7 @@ class EncoderLayer(layers.Layer):
     def call(self, x, mask=None):
         # 1. Attention
         nx = self.norm1(x)
+        # [SỬA ĐỔI]: Khai báo rõ mask=mask
         attn_out = self.self_attn(nx, nx, nx, mask=mask)
         x = x + self.drop1(attn_out)
 
@@ -126,6 +126,7 @@ class MultiHeadedAttention(layers.Layer):
             for l, x in zip(self.linears, (query, key, value))
         ]
 
+        # [SỬA ĐỔI]: Khai báo rõ mask=mask
         x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout)
 
         x = tf.reshape(tf.transpose(x, perm=[0, 2, 1, 3]), (nbatches, -1, self.h * self.d_k))
@@ -151,7 +152,8 @@ class Transfomer(layers.Layer):
         )
         
     def call(self, x, mask=None):
-        return self.model(x, mask)
+        # [SỬA ĐỔI]: Khai báo rõ mask=mask
+        return self.model(x, mask=mask)
 
     def get_config(self):
         config = super(Transfomer, self).get_config()
