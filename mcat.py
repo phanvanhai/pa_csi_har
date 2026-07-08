@@ -12,7 +12,6 @@ class Encoder(layers.Layer):
         self.N = N
         for i in range(N):
             self.layers_list.append(layer)
-        # [SỬA ĐỔI]: Để trống LayerNorm để tự động nhận kích thước đầu ra thay vì truyền layer.size cố định
         self.norm = LayerNorm()
     
     def call(self, x, mask=None):
@@ -28,15 +27,14 @@ class Encoder(layers.Layer):
 class LayerNorm(layers.Layer):
     def __init__(self, features=None, eps=1e-6, **kwargs):
         super(LayerNorm, self).__init__(**kwargs)
-        self.features = features
+        self._features_config = features
         self.eps = eps
         
     def build(self, input_shape):
-        # [SỬA ĐỔI]: Tự động lấy chiều cuối cùng của input_shape nếu features=None
-        if self.features is None:
-            self.features = input_shape[-1]
-        self.a_2 = self.add_weight(shape=(self.features,), initializer='ones', trainable=True, name="gamma")
-        self.b_2 = self.add_weight(shape=(self.features,), initializer='zeros', trainable=True, name="beta")
+        # [SỬA ĐỔI QUAN TRỌNG]: Tự động lấy kích thước động
+        dim = input_shape[-1]
+        self.a_2 = self.add_weight(shape=(dim,), initializer='ones', trainable=True, name="gamma")
+        self.b_2 = self.add_weight(shape=(dim,), initializer='zeros', trainable=True, name="beta")
         super(LayerNorm, self).build(input_shape)
     
     def call(self, x):
@@ -47,7 +45,7 @@ class LayerNorm(layers.Layer):
 
     def get_config(self):
         config = super(LayerNorm, self).get_config()
-        config.update({"features": self.features, "eps": self.eps})
+        config.update({"features": self._features_config, "eps": self.eps})
         return config
 
 class EncoderLayer(layers.Layer):

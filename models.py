@@ -11,11 +11,9 @@ from transformer_encoder import Transfomer
 
 
 class Two_Stream_Model(layers.Layer):
-    # [SỬA ĐỔI]: Thêm **kwargs vào hàm khởi tạo để đảm bảo tương thích với chuẩn Layer của Keras
     def __init__(self,hlayers,vlayers,hheads,vheads,K,sample,num_class, maxlen, **kwargs):
         super(Two_Stream_Model,self).__init__(**kwargs)
         
-        # [SỬA ĐỔI]: Lưu trữ lại các cấu hình đầu vào để phục vụ cho hàm get_config() ở cuối class
         self._config_dict = {
             'hlayers': hlayers, 'vlayers': vlayers, 'hheads': hheads, 
             'vheads': vheads, 'K': K, 'sample': sample, 
@@ -29,7 +27,9 @@ class Two_Stream_Model(layers.Layer):
         self.filter_sizes_v = [2,4]
         self.sample = sample
         self.pos_endcoding = GRE(270,500,K)
-        self.pos_endcoding_v = GRE(2000,30,K)
+        
+        # [SỬA ĐỔI]: Đổi d_model từ 2000 thành 1000 để khớp với kích thước của y
+        self.pos_endcoding_v = GRE(1000,30,K)
         self.maxlen = maxlen
 
         self.relu = layers.Activation('relu')
@@ -38,7 +38,8 @@ class Two_Stream_Model(layers.Layer):
             self.v_transformer = None
             self.dense =  layers.Dense(num_class, input_dim=270)
         else: 
-            self.v_transformer = Transfomer(2000,vlayers,vheads)
+            # [SỬA ĐỔI]: Đổi hidden_dim từ 2000 thành 1000 để giải quyết lỗi lệch ma trận
+            self.v_transformer = Transfomer(1000,vlayers,vheads)
             self.dense =  layers.Dense(num_class, input_dim=self.kernel_num * len(self.filter_sizes) + self.kernel_num_v * len(self.filter_sizes_v))
         
         self.dense2 = layers.Dense(num_class,input_dim = self.kernel_num * len(self.filter_sizes))
@@ -106,7 +107,6 @@ class Two_Stream_Model(layers.Layer):
             re = self._aggregate(x)
         return re
 
-    # [SỬA ĐỔI]: Thêm hàm get_config để lớp tuỳ chỉnh có thể được tuần tự hoá (serialize)
     def get_config(self):
         config = super(Two_Stream_Model, self).get_config()
         config.update(self._config_dict)
